@@ -1,6 +1,6 @@
 {
-  "name": "KOReader Sync Server",
-  "short_name": "KOReader-Sync",
+  "name": "Reader Server",
+  "short_name": "Reader",
   "icons": [
     {
       "src": "/public/android-chrome-192x192.png",
