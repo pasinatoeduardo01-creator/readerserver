@@ -12,6 +12,7 @@ import { gravarProgresso } from "./progresso";
 import { rateLimiter } from "./limite";
 import { criarRotasPapel } from "./papel/rotas";
 import { criarLocalizadorIA } from "./papel/ia";
+import * as dados from "./papel/dados";
 
 // =============================================================================
 // Types
@@ -551,16 +552,26 @@ app.get("/health", (c) => {
   return c.json({ status: "ok" });
 });
 
-app.get("/", (c) => {
+app.get("/", async (c) => {
   const rows = db
     .prepare(
       `
-      SELECT document, percentage, device, filename, title, authors, timestamp
+      SELECT user_id, document, percentage, device, filename, title, authors, timestamp
       FROM progress
       ORDER BY timestamp DESC
     `
     )
-    .all() as DashboardRow[];
+    .all() as (DashboardRow & { user_id: number })[];
+  for (const r of rows) {
+    const livro = dados.obterLivro(db, r.user_id, r.document);
+    if (livro?.paper_pages) {
+      try {
+        r.paperPage = dados.paginaEstimada(db, r.user_id, livro, await dados.carregarIndice(livro.index_path));
+      } catch {
+        // Índice do EPUB ausente: não deixa o painel público quebrar por isso.
+      }
+    }
+  }
   const now = Math.floor(Date.now() / 1000);
   c.header("Cache-Control", "no-store");
   return c.html(<Dashboard rows={rows} now={now} />);

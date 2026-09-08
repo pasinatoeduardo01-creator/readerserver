@@ -12,6 +12,7 @@ export interface DashboardRow {
   title: string | null;
   authors: string | null;
   timestamp: number;
+  paperPage?: number | null;
 }
 
 const FINISHED_AT = 0.98;
@@ -32,6 +33,7 @@ function deviceLabel(device: string): string {
   if (d.includes("kindle")) return "Kindle";
   if (d.includes("readest")) return device.replace(/\s*\((.*)\)/, " · $1");
   if (d.includes("crosspoint") || d.includes("xteink")) return "Xteink X3";
+  if (d.includes("físico") || d === "papel") return "Livro físico";
   return device;
 }
 
@@ -82,6 +84,7 @@ const css = `
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--fg); }
+  a { color: var(--accent); }
   body {
     font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
     line-height: 1.45;
@@ -140,6 +143,7 @@ export function Dashboard(props: { rows: DashboardRow[]; now: number }) {
         </div>
         <p class="meta">
           {deviceLabel(r.device)} · {relativeTime(r.timestamp, now)} · {absoluteTime(r.timestamp)}
+          {r.paperPage ? ` · ≈ pág. ${r.paperPage} no papel` : ""}
         </p>
       </li>
     );
@@ -163,6 +167,7 @@ export function Dashboard(props: { rows: DashboardRow[]; now: number }) {
             <div>
               <h1>Reader Server</h1>
               <p class="sub">Onde parei de ler</p>
+              <p class="sub"><a href="/papel">Marcar no livro físico</a></p>
             </div>
             {lastSync ? (
               <p class="sub">Última sincronização {relativeTime(lastSync, now)}</p>
@@ -211,7 +216,7 @@ export function Dashboard(props: { rows: DashboardRow[]; now: number }) {
             </p>
           ) : null}
 
-          <footer>Horários em Brasília. Esta página não mostra nem aceita credenciais.</footer>
+          <footer>Horários em Brasília. Esta página não mostra nem aceita credenciais. Guarda os EPUBs que você enviou pela área do celular; a foto da página não é guardada.</footer>
         </main>
       </body>
     </html>
