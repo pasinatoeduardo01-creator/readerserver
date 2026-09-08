@@ -305,7 +305,11 @@ app.use("*", loggingMiddleware);
 app.onError(errorHandler);
 
 // Rate limit auth-related endpoints
-const authRateLimit = rateLimiter({ windowMs: 60_000, max: 10 });
+const authRateLimit = rateLimiter({
+  windowMs: 60_000,
+  max: 10,
+  aoContar: (k) => logger.debug({ chave: k }, "Limite por IP: chave calculada"),
+});
 app.use("/users/*", authRateLimit);
 
 // Área do livro de papel (celular): login por sessão, livros, configurações.

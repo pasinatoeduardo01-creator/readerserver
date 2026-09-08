@@ -5,6 +5,13 @@ import type { Context, Next } from "hono";
 export interface RateLimitOptions {
   windowMs: number;
   max: number;
+  /**
+   * Chamado a cada requisição com a chave usada na contagem. Este arquivo não tem
+   * logger próprio (é usado antes de o servidor montar o seu), então quem monta o
+   * limitador decide o que fazer com a chave — sem isso, um limite disparando por
+   * causa de um proxy mal configurado não deixa rastro nenhum.
+   */
+  aoContar?: (chave: string) => void;
 }
 
 /**
@@ -30,7 +37,7 @@ function chaveDoCliente(c: Context): string {
   return "unknown";
 }
 
-export function rateLimiter({ windowMs, max }: RateLimitOptions) {
+export function rateLimiter({ windowMs, max, aoContar }: RateLimitOptions) {
   const hits = new Map<string, { count: number; resetAt: number }>();
 
   setInterval(() => {
@@ -42,6 +49,7 @@ export function rateLimiter({ windowMs, max }: RateLimitOptions) {
 
   return async (c: Context, next: Next) => {
     const key = chaveDoCliente(c);
+    aoContar?.(key);
     const now = Date.now();
     const entry = hits.get(key);
 
