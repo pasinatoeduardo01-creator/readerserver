@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 export const MODELO_IA = "claude-opus-5";
 
