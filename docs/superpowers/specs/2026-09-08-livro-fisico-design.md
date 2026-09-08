@@ -151,7 +151,7 @@ Todas em `/papel/*`, exceto o painel. Todas exigem sessão, exceto a página e o
 ### 6.2 Casamento local (`casamento.ts`)
 
 - Normalização: minúsculas, sem acentos, sem pontuação, espaços colapsados.
-- Trigramas de caracteres; similaridade de Dice entre o trecho e (a) o início de cada parágrafo, cortado em 1,5× o tamanho do trecho, e (b) o parágrafo inteiro; vale o maior.
+- Trigramas de caracteres; similaridade de Dice entre o trecho e (a) o início de cada parágrafo, cortado em 1,15× o tamanho do trecho (era 1,5× no desenho; ajustado na implementação porque a janela mais larga baixava a similaridade de trechos exatos para ~0,79), e (b) o parágrafo inteiro; vale o maior.
 - Confiante: melhor ≥ 0,60 **e** vantagem ≥ 0,10 sobre o segundo. Duvidoso: melhor entre 0,40 e 0,60, ou vantagem menor que 0,10 → devolve 3 candidatos. Abaixo de 0,40: não encontrado.
 - Escopo: capítulo escolhido; se não encontrado, o livro inteiro (só para texto digitado).
 
