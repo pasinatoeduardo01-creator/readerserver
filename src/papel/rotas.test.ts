@@ -20,6 +20,11 @@ const iaFalsa: LocalizadorIA = {
   localizar: async () => ({ status: "ok", transcricao: "t", paragrafo: 1, confianca: 0.95, candidatos: [1] }),
   testarChave: async (k) => (k === "boa" ? { ok: true } : { ok: false, mensagem: "Chave de API inválida. Confira em Configurações." }),
 };
+/** IA que responde com confiança abaixo de 0,7: a tela tem de perguntar em vez de afirmar. */
+const iaDuvidosa: LocalizadorIA = {
+  localizar: async () => ({ status: "ok", transcricao: "t", paragrafo: 0, confianca: 0.5, candidatos: [0, 1] }),
+  testarChave: iaFalsa.testarChave,
+};
 
 beforeEach(async () => {
   db = abrirBanco(":memory:");
@@ -49,6 +54,13 @@ function epubDeTeste() {
   return montarEpub([
     { nome: "c1.xhtml", titulo: "Um", corpo: "<p>Primeiro parágrafo do livro.</p><p>Segundo parágrafo, bem diferente.</p>" },
     { nome: "c2.xhtml", titulo: "Dois", corpo: "<p>Capítulo dois começa aqui.</p><p>E segue por aqui.</p>" },
+  ]);
+}
+
+function epubComGemeos() {
+  return montarEpub([
+    { nome: "c1.xhtml", titulo: "Um", corpo: "<p>Gêmeo idêntico de parágrafo repetido.</p><p>Gêmeo idêntico de parágrafo repetido.</p><p>Outra coisa completamente diferente aqui.</p>" },
+    { nome: "c2.xhtml", titulo: "Dois", corpo: "<p>Capítulo dois começa aqui.</p>" },
   ]);
 }
 
@@ -180,8 +192,7 @@ test("tela do livro: salva total de páginas e mostra página estimada", async (
   expect(tela).toContain("Kindle");
 });
 
-async function livroPronto(): Promise<{ cookie: string; hash: string }> {
-  const bytes = epubDeTeste();
+async function livroPronto(bytes: Uint8Array = epubDeTeste()): Promise<{ cookie: string; hash: string }> {
   const hash = hashParcialKoreader(bytes);
   gravarProgresso(db, { userId: 1, document: hash, progress: "/body/DocFragment[1]/body/p", percentage: 0.05, device: "KindleBasic3", deviceId: "k", title: "Livro de Teste", authors: "Autora Fictícia", filename: "livro.epub" });
   const cookie = await logar();
@@ -253,11 +264,41 @@ test("foto em formato que a API não aceita volta com o formato na mensagem", as
   expect(await r.text()).toContain("Formato de foto não aceito");
 });
 
-test("texto que não casa e sem chave: mensagem com alternativas; parágrafos gêmeos: candidatos", async () => {
+test("texto que não casa e sem chave: mensagem com alternativas", async () => {
   const { cookie, hash } = await livroPronto();
   const nada = await (await localizar(cookie, hash, { capitulo: "0", modo: "auto", trecho: "frase inexistente neste livro" })).text();
   expect(nada).toContain("Não encontrei");
   expect(nada).toContain("início do capítulo");
+});
+
+test("parágrafos gêmeos: a tela pergunta e oferece um formulário para cada candidato", async () => {
+  const { cookie, hash } = await livroPronto(epubComGemeos());
+  const html = await (await localizar(cookie, hash, { capitulo: "0", modo: "auto", trecho: "Gêmeo idêntico de parágrafo" })).text();
+  expect(html).toContain("Qual destes?");
+  expect(html).toContain("Outras possibilidades");
+  const confirmares = html.match(new RegExp(`action="/papel/livros/${hash}/confirmar"`, "g")) ?? [];
+  expect(confirmares.length).toBeGreaterThanOrEqual(2);
+});
+
+test("texto que não casa, com chave cadastrada: cai na IA e a tela diz que veio dela", async () => {
+  const { cookie, hash } = await livroPronto();
+  await salvarChaveApi(db, 1, "k", SALT);
+  const html = await (await localizar(cookie, hash, { capitulo: "0", modo: "auto", trecho: "frase inexistente neste livro" })).text();
+  expect(html).toContain('name="origem" value="ia"');
+  expect(html).toContain('name="metodo" value="texto"');
+  expect(html).toContain("Localizado pela IA");
+});
+
+test("IA com confiança baixa: pergunta qual dos candidatos em vez de afirmar", async () => {
+  const { cookie, hash } = await livroPronto();
+  await salvarChaveApi(db, 1, "k", SALT);
+  const app2 = criarRotasPapel({ db, salt: SALT, dirLivros: dir, ia: iaDuvidosa, logger: pino({ level: "silent" }) });
+  const form = new FormData();
+  for (const [k, v] of Object.entries({ capitulo: "0", modo: "auto", trecho: "frase inexistente neste livro" })) form.append(k, v);
+  const html = await (await app2.request(`/papel/livros/${hash}/localizar`, comCookie(cookie, { method: "POST", body: form }))).text();
+  expect(html).toContain("Qual destes?");
+  expect(html).toContain("Outras possibilidades");
+  expect(html).toContain('name="origem" value="ia"');
 });
 
 test("confirmar com parágrafo inválido devolve 400 e não grava", async () => {
