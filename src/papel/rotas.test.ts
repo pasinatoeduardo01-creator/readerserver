@@ -1,5 +1,5 @@
 import { test, expect, beforeEach } from "bun:test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import pino from "pino";
@@ -67,11 +67,33 @@ test("GET /papel sem sessão mostra o login; senha errada volta 401 com erro", a
 });
 
 test("rotas protegidas redirecionam sem sessão", async () => {
-  for (const rota of ["/papel/config", "/papel/livros/abc", "/papel/livros/abc/marcar"]) {
-    const r = await app.request(rota);
+  const rotas: [string, RequestInit][] = [
+    ["/papel/config", {}],
+    ["/papel/livros/abc", {}],
+    ["/papel/livros/abc/marcar", {}],
+    ["/papel/sair", { method: "POST" }],
+  ];
+  for (const [rota, init] of rotas) {
+    const r = await app.request(rota, init);
     expect(r.status).toBe(302);
     expect(r.headers.get("location")).toContain("/papel?proximo=");
   }
+});
+
+test("login não sai do site: proximo externo cai em /papel, interno é respeitado", async () => {
+  const fora = await app.request("/papel/login", { method: "POST", body: new URLSearchParams({ usuario: "eduardo", senha: "senha", proximo: "//evil.com" }) });
+  expect(fora.status).toBe(302);
+  expect(fora.headers.get("location")).toBe("/papel");
+
+  const dentro = await app.request("/papel/login", { method: "POST", body: new URLSearchParams({ usuario: "eduardo", senha: "senha", proximo: "/papel/config" }) });
+  expect(dentro.status).toBe(302);
+  expect(dentro.headers.get("location")).toBe("/papel/config");
+});
+
+test("document que não é hash de documento não existe", async () => {
+  const cookie = await logar();
+  const r = await app.request("/papel/livros/nao-e-hash", comCookie(cookie));
+  expect(r.status).toBe(404);
 });
 
 test("lista de livros mostra os do progresso e marca os sem EPUB", async () => {
@@ -103,11 +125,29 @@ test("envio do EPUB: aceita cópia dos aparelhos, recusa cópia diferente do mes
   db.run("DELETE FROM progress");
   const novo = await enviarEpub(cookie, bytes);
   expect(novo.status).toBe(302);
+  expect(novo.headers.get("location")).toContain("aviso=");
   const tela = await (await app.request(`/papel/livros/${hash}`, comCookie(cookie))).text();
   expect(tela).toContain("Nenhum aparelho sincronizou este arquivo ainda");
 
   const invalido = await enviarEpub(cookie, new TextEncoder().encode("nada"));
   expect(invalido.status).toBe(400);
+});
+
+test("índice sumido do disco: o livro volta a pedir o EPUB e nenhuma tela quebra", async () => {
+  const bytes = epubDeTeste();
+  const hash = hashParcialKoreader(bytes);
+  gravarProgresso(db, { userId: 1, document: hash, progress: "/body/DocFragment[2]/body/p", percentage: 0.5, device: "KindleBasic3", deviceId: "k", title: "Livro de Teste" });
+  const cookie = await logar();
+  await enviarEpub(cookie, bytes);
+  rmSync(join(dir, `${hash}.index.json`));
+
+  const lista = await app.request("/papel", comCookie(cookie));
+  expect(lista.status).toBe(200);
+  expect(await lista.text()).toContain("Sem EPUB no servidor");
+
+  const livro = await app.request(`/papel/livros/${hash}`, comCookie(cookie));
+  expect(livro.status).toBe(200);
+  expect(await livro.text()).toContain("O índice deste livro sumiu do servidor");
 });
 
 test("configurações: salva a chave cifrada, mostra só o fim, testa e remove", async () => {
