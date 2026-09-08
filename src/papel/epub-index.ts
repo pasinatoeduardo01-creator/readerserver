@@ -70,13 +70,22 @@ function xml(texto: string): Document {
 
 /** Percorre o <body> de um item da espinha emitindo parágrafos e registrando âncoras (id → próximo parágrafo). */
 function percorrer(el: Element, caminho: string, spine: number, saida: Paragrafo[], ancoras: Map<string, number>, estado: { total: number }) {
+  // Regra do crengine: o índice posicional aparece sempre que há mais de um irmão
+  // com o mesmo nome (`p[1]`, `p[2]`…) e some quando o elemento é o único daquele
+  // nome (`div`). Por isso a contagem por nome vem antes de montar os caminhos.
+  const totalPorNome = new Map<string, number>();
+  for (const filho of el.children) {
+    if (!(filho instanceof Element) || filho.type !== "tag") continue;
+    const nome = nomeLocal(filho.name);
+    totalPorNome.set(nome, (totalPorNome.get(nome) ?? 0) + 1);
+  }
   const contagem = new Map<string, number>();
   for (const filho of el.children) {
     if (!(filho instanceof Element) || filho.type !== "tag") continue;
     const nome = nomeLocal(filho.name);
     const n = (contagem.get(nome) ?? 0) + 1;
     contagem.set(nome, n);
-    const sub = `${caminho}/${n === 1 ? nome : `${nome}[${n}]`}`;
+    const sub = `${caminho}/${(totalPorNome.get(nome) ?? 1) > 1 ? `${nome}[${n}]` : nome}`;
     const id = getAttributeValue(filho, "id");
     if (id && !ancoras.has(id)) ancoras.set(id, saida.length);
     if (BLOCOS.has(nome) && !contemBloco(filho)) {
@@ -250,9 +259,22 @@ export function capituloDoParagrafo(indice: IndiceLivro, paragrafo: number): Cap
   return atual;
 }
 
-/** Índice do parágrafo cujo XPath é igual ao dado (ignorando o sufixo /text().N). */
+/**
+ * Forma comparável de um XPath: sem o sufixo de caractere (`/text()[k].N`, `/text().N`
+ * ou `.N`) e sem os `[1]`, que os três leitores escrevem de jeitos diferentes — o
+ * CrossPoint indexa todos os segmentos (`div[1]/p[3]`), crengine e Readest omitem o
+ * índice do irmão único (`div/p[3]`).
+ */
+function comparavel(xpath: string): string {
+  return xpath
+    .replace(/\/text\(\)(\[\d+\])?\.\d+$/, "")
+    .replace(/\.\d+$/, "")
+    .replace(/\[1\]/g, "");
+}
+
+/** Índice do parágrafo cujo XPath é igual ao dado (ignorando sufixo de caractere e `[1]`). */
 export function paragrafoDoXpath(indice: IndiceLivro, xpath: string): number | null {
-  const semTexto = xpath.replace(/\/text\(\)(\[\d+\])?\.\d+$/, "").replace(/\.\d+$/, "");
-  const i = indice.paragraphs.findIndex((p) => p.xpath === semTexto);
+  const alvo = comparavel(xpath);
+  const i = indice.paragraphs.findIndex((p) => comparavel(p.xpath) === alvo);
   return i >= 0 ? i : null;
 }

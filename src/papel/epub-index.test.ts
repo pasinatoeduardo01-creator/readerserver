@@ -13,16 +13,16 @@ const DOIS = () =>
     { nome: "cap2.xhtml", titulo: "Dois", ancora: "c2", corpo: `<p>Antes da âncora.</p><h1 id="c2">Dois</h1><p>Alfa</p><p>Beta</p>` },
   ]);
 
-test("gera XPath no formato do KOReader, sem [1], só para blocos folha com texto", () => {
+test("gera XPath do crengine (índice só quando há irmão do mesmo nome) para blocos folha com texto", () => {
   const idx = indexarEpub(DOIS(), "doc1");
   expect(idx.paragraphs.map((p) => p.xpath)).toEqual([
-    "/body/DocFragment[1]/body/h1",
-    "/body/DocFragment[1]/body/p",
-    "/body/DocFragment[1]/body/div/p",
+    "/body/DocFragment[1]/body/h1",          // único h1 do body: sem índice
+    "/body/DocFragment[1]/body/p[1]",        // há outro <p> irmão: índice desde o primeiro
+    "/body/DocFragment[1]/body/div/p",       // div único; <p> único dentro dele
     "/body/DocFragment[1]/body/blockquote/p",
-    "/body/DocFragment[1]/body/ul/li",
+    "/body/DocFragment[1]/body/ul/li[1]",
     "/body/DocFragment[1]/body/ul/li[2]",
-    "/body/DocFragment[2]/body/p",
+    "/body/DocFragment[2]/body/p[1]",
     "/body/DocFragment[2]/body/h1",
     "/body/DocFragment[2]/body/p[2]",
     "/body/DocFragment[2]/body/p[3]",
@@ -52,6 +52,17 @@ test("sumário resolve arquivo e âncora para o parágrafo certo", () => {
   expect(paragrafoDoXpath(idx, "/body/DocFragment[2]/body/p[2]")).toBe(8);
   expect(paragrafoDoXpath(idx, "/body/DocFragment[2]/body/p[2]/text().15")).toBe(8);
   expect(paragrafoDoXpath(idx, "/body/DocFragment[9]/body/p")).toBeNull();
+});
+
+test("paragrafoDoXpath casa as três escritas: com [1], sem [1], com /text().N e com .N", () => {
+  const idx = indexarEpub(DOIS(), "doc1");
+  // Mesmo parágrafo (o 6: "Antes da âncora."), escrito como cada leitor escreve.
+  expect(paragrafoDoXpath(idx, "/body/DocFragment[2]/body/p[1]/text().0")).toBe(6);
+  expect(paragrafoDoXpath(idx, "/body/DocFragment[2]/body/p[1].0")).toBe(6);
+  expect(paragrafoDoXpath(idx, "/body/DocFragment[2]/body/p")).toBe(6);
+  // CrossPoint indexa todos os segmentos, inclusive os de irmão único (div[1]/p[1]).
+  expect(paragrafoDoXpath(idx, "/body/DocFragment[1]/body/div[1]/p[1]")).toBe(2);
+  expect(paragrafoDoXpath(idx, "/body/DocFragment[1]/body/div[1]/p[1].0")).toBe(2);
 });
 
 test("sem sumário, cada item da espinha vira 'Seção N'", () => {

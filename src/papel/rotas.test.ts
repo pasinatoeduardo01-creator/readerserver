@@ -218,7 +218,8 @@ test("texto no mesmo idioma: casa localmente, mostra vizinhos e confirma gravand
   const conf = await app.request(`/papel/livros/${hash}/confirmar`, comCookie(cookie, { method: "POST", body: new URLSearchParams({ paragrafo: "3", pagina: "42", metodo: "texto", origem: "local", confianca: "0.9", texto_entrada: "E segue por aqui" }) }));
   expect(conf.status).toBe(302);
   const prog = db.prepare("SELECT * FROM progress WHERE document = ?").get(hash) as any;
-  expect(prog).toMatchObject({ device: "Livro físico", device_id: "papel", progress: "/body/DocFragment[2]/body/p[2]", title: "Livro de Teste", filename: "livro.epub" });
+  // O progresso vai com o sufixo `.0` (offset zero no elemento), que crengine, Readest e CrossPoint aceitam.
+  expect(prog).toMatchObject({ device: "Livro físico", device_id: "papel", progress: "/body/DocFragment[2]/body/p[2].0", title: "Livro de Teste", filename: "livro.epub" });
   expect(prog.percentage).toBeGreaterThan(0.5);
   const marca = db.prepare("SELECT * FROM paper_marks WHERE document = ?").get(hash) as any;
   expect(marca).toMatchObject({ paragraph: 3, paper_page: 42, method: "texto", matched_by: "local" });

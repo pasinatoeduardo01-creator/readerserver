@@ -272,7 +272,10 @@ export function criarRotasPapel(deps: DepsPapel): Hono<Env> {
     const p = indice.paragraphs[paragrafo];
     const percentage = indice.totalChars > 0 ? p.offset / indice.totalChars : 0;
     dados.gravarMarca(db, { userId, document: livro.document, paragraph: paragrafo, xpath: p.xpath, charOffset: p.offset, percentage, paperPage, method: metodo, matchedBy: origem, confidence: Number.isFinite(confNum) ? confNum : null, inputText: String(form["texto_entrada"] ?? "").slice(0, 2000) || null });
-    gravarProgresso(db, { userId, document: livro.document, progress: p.xpath, percentage, device: "Livro físico", deviceId: "papel", title: livro.title, authors: livro.authors, filename: null });
+    // O sufixo `.0` (offset zero no elemento) é o que os três leitores aceitam: crengine
+    // (`xpath_step_point`), Readest (`elementOffsetMatch`) e CrossPoint (modo ancestral).
+    // Sem ele o CrossPoint cai num fallback que erra em `li`, `h1` e `blockquote/p`.
+    gravarProgresso(db, { userId, document: livro.document, progress: `${p.xpath}.0`, percentage, device: "Livro físico", deviceId: "papel", title: livro.title, authors: livro.authors, filename: null });
     logger.info({ userId, document: livro.document, xpath: p.xpath, percentage, metodo, origem }, "Marcação no papel gravada");
     const hora = new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
     return c.redirect(`/papel/livros/${livro.document}?msg=${encodeURIComponent(`Gravado às ${hora}. A próxima sincronização dos leitores pega daqui.`)}`, 302);

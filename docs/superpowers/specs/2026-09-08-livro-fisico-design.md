@@ -45,7 +45,7 @@ Fluxo de uma marcação:
 2. Escolhe o livro → tela "Marcar onde parei": capítulo (lista do sumário, pré-selecionado o capítulo da última posição conhecida), foto **ou** texto **ou** "início do capítulo", e o campo opcional "página do livro físico".
 3. Servidor localiza: texto no mesmo idioma → casamento local; foto, ou texto que não casa localmente → IA. Devolve o parágrafo encontrado com o anterior e o seguinte.
 4. Eduardo confirma ("É este", "O de cima", "O de baixo") ou tenta de novo.
-5. Servidor grava `paper_marks` (histórico) e `progress` (o que os aparelhos leem), com `device = "Livro físico"`, `device_id = "papel"`, `timestamp = agora`.
+5. Servidor grava `paper_marks` (histórico, com o XPath do elemento) e `progress` (o que os aparelhos leem, com o XPath do elemento mais o sufixo `.0` — ver 4.4), com `device = "Livro físico"`, `device_id = "papel"`, `timestamp = agora`.
 6. Kindle/Readest aplicam pelo horário mais novo; X3 aplica pela porcentagem mais avançada (Smart sync).
 
 ## 4. Dados
@@ -118,7 +118,9 @@ A tabela `progress` não muda. A linha do livro físico usa o mesmo `document` d
 ### 4.4 Regras do XPath (formato do KOReader/crengine)
 
 - Prefixo `/body/DocFragment[N]/body`, N = posição do item na espinha, a partir de 1. Livro com um único item na espinha: `/body/DocFragment/body` (sem índice), como o crengine escreve.
-- Depois do prefixo, o caminho de elementos a partir do `<body>` do XHTML, nomes em minúsculas, índice posicional entre irmãos do **mesmo nome** e **sem `[1]`** (`div/p[4]`, não `div[1]/p[4]`). É o formato que o Kindle grava e que Readest e CrossPoint comprovadamente leem.
+- Depois do prefixo, o caminho de elementos a partir do `<body>` do XHTML, nomes em minúsculas, com **índice posicional sempre que há mais de um irmão do mesmo nome** (`p[1]`, `p[2]`…) e **sem índice quando o elemento é o único irmão daquele nome** (`div`) — é a regra do crengine, que o Kindle grava e o Readest repete. Um `div` único seguido de vários `p` vira `div/p[4]`.
+- Na leitura, os três formatos casam: o CrossPoint escreve `[N]` em todos os segmentos (`div[1]/p[3]`), então a comparação em `paragrafoDoXpath` tira todos os `[1]` e os sufixos de caractere (`/text()[k].N`, `/text().N`, `.N`) dos dois lados.
+- Na **gravação** em `progress` vai o elemento com o sufixo `.0` (`/body/DocFragment[3]/body/div/p[1].0`): o parser estruturado do CrossPoint exige `/text()` ou `.N` no fim (sem isso cai num fallback que erra em `li`, `h1` e `blockquote/p`), e `.0` é aceito também pelo crengine (`xpath_step_point`) e pelo Readest (`elementOffsetMatch`). Preferido a `/text().0` porque o crengine devolve nulo quando o parágrafo não tem texto direto (`<p><span>…</span></p>`). Em `paper_marks.xpath` e no índice fica o elemento puro.
 - Parágrafo = elemento de bloco (`p`, `h1`…`h6`, `li`, `blockquote`, `pre`, `dd`, `dt`, `td`, `th`, `figcaption`) sem outro bloco dentro e com texto não vazio após colapsar espaços. Um bloco que contém blocos é atravessado, não emitido. Texto de `head`, `script` e `style` é ignorado.
 - Verificação feita em 08/09 com o EPUB real de "The Time Machine": o índice gera `/body/DocFragment[8]/body/div/p[4]` (igual ao que o Kindle gravou) e o deslocamento dá 28,7% onde o Kindle diz 29,55%.
 
