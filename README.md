@@ -68,6 +68,10 @@ Convenção da foto: a posição vai para o primeiro parágrafo completo da pág
 
 Limitação: o X3 (Smart sync) aplica a posição mais avançada em porcentagem, e a porcentagem do papel é calculada por caracteres (difere 1–2 pontos da do aparelho). Marque no papel pelo menos algumas páginas à frente da posição do X3.
 
+`PASSWORD_SALT` é obrigatório aqui: sem ele a área do celular não sobe (`/papel` responde 503), porque o cookie de sessão seria forjável. Trocar o salt invalida as sessões do celular e a chave de API guardada — é preciso entrar de novo e recadastrar a chave.
+
+`DB_PATH` é opcional (padrão `data/koreader-sync.db`) e serve só para testes e uso local.
+
 Dados: tabelas `books`, `paper_marks`, `settings`; arquivos em `/app/data/books/`. Testes: `bun test` na pasta `app/`.
 
 ## Configuration

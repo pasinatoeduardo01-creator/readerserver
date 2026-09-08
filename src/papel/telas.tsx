@@ -29,7 +29,9 @@ export function Pagina(props: { titulo: string; children: any; script?: boolean 
       <head>
         <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="color-scheme" content="light dark" /><meta name="robots" content="noindex, nofollow" />
-        <title>{props.titulo} · Reader Server</title><style>{css}</style>
+        <title>{props.titulo} · Reader Server</title>
+        {/* Como filho, o CSS sairia escapado (`"Segoe UI"` virava `&quot;Segoe UI&quot;`) e o navegador descartava a regra da fonte. */}
+        <style dangerouslySetInnerHTML={{ __html: css }} />
         {props.script ? <script src="/public/papel.js" defer></script> : null}
       </head>
       <body><main>{props.children}</main></body>
@@ -59,6 +61,7 @@ export function rotuloAparelho(device: string | null): string {
   if (d.includes("kindle")) return "Kindle";
   if (d.includes("readest")) return device.replace(/\s*\((.*)\)/, " · $1");
   if (d.includes("crosspoint") || d.includes("xteink")) return "Xteink X3";
+  if (d.includes("físico") || d === "papel") return "Livro físico";
   return device;
 }
 

@@ -9,6 +9,12 @@ test("mostra a página estimada no papel e o aparelho Livro físico", () => {
   expect(html).toContain("≈ pág. 87 no papel");
 });
 
+test("o CSS vai cru no HTML: a fonte com aspas não sai escapada", () => {
+  const html = (<Dashboard rows={[]} now={2000} />).toString();
+  expect(html).toContain('"Segoe UI"');
+  expect(html).not.toContain("&quot;");
+});
+
 test("sem total de páginas não mostra estimativa; tem link para marcar", () => {
   const html = (<Dashboard rows={[{ ...base, device: "KindleBasic3", paperPage: null }]} now={2000} />).toString();
   expect(html).not.toContain("no papel");

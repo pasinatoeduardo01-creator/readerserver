@@ -216,6 +216,8 @@ test("formulário de marcar lista os capítulos e pré-seleciona o da posição 
   expect(html).toContain('<option value="1">Dois</option>');
   expect(html).toContain('name="foto"');
   expect(html).toContain('name="trecho"');
+  // O CSS vai cru: escapado, `"Segoe UI"` virava `&quot;…&quot;` e todas as telas caíam em fonte serifada.
+  expect(html).toContain('"Segoe UI"');
 });
 
 test("texto no mesmo idioma: casa localmente, mostra vizinhos e confirma gravando no progresso", async () => {
@@ -235,6 +237,16 @@ test("texto no mesmo idioma: casa localmente, mostra vizinhos e confirma gravand
   expect(prog.percentage).toBeGreaterThan(0.5);
   const marca = db.prepare("SELECT * FROM paper_marks WHERE document = ?").get(hash) as any;
   expect(marca).toMatchObject({ paragraph: 3, paper_page: 42, method: "texto", matched_by: "local" });
+  const tela = await (await app.request(`/papel/livros/${hash}`, comCookie(cookie))).text();
+  expect(tela).toContain("Livro físico");
+});
+
+test("trecho de outro capítulo: acha no livro inteiro e o cabeçalho mostra o capítulo do parágrafo", async () => {
+  const { cookie, hash } = await livroPronto();
+  const html = await (await localizar(cookie, hash, { capitulo: "0", modo: "auto", trecho: "E segue por aqui" })).text();
+  expect(html).toContain('name="paragrafo" value="3"');
+  expect(html).toContain('<p class="muted">Dois</p>');
+  expect(html).not.toContain('<p class="muted">Um</p>');
 });
 
 test("início do capítulo grava o primeiro parágrafo do capítulo", async () => {

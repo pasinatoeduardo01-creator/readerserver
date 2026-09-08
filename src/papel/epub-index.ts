@@ -219,7 +219,14 @@ function lerSumario(
     if (i < 0) continue;
     let paragrafo: number | undefined;
     if (fragmento) paragrafo = ancorasPorArquivo.get(arquivo)?.get(fragmento);
-    if (paragrafo === undefined) paragrafo = primeiroParagrafoDoItem[i];
+    if (paragrafo === undefined) {
+      // Item da espinha sem parágrafo nenhum (uma página só de imagem, por exemplo):
+      // sem âncora resolvida ele não tem posição própria, e cair no primeiro parágrafo
+      // do item SEGUINTE faria essa entrada roubar o título do capítulo de verdade.
+      const fim = primeiroParagrafoDoItem[i + 1] ?? totalParagrafos;
+      if (primeiroParagrafoDoItem[i] >= fim) continue;
+      paragrafo = primeiroParagrafoDoItem[i];
+    }
     if (paragrafo >= totalParagrafos) continue;
     if (capitulos.some((c) => c.paragraph === paragrafo)) continue;
     capitulos.push({ title: e.title, spine: i + 1, paragraph: paragrafo });

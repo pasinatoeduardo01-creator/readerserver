@@ -159,7 +159,8 @@ export function Dashboard(props: { rows: DashboardRow[]; now: number }) {
         <link rel="icon" type="image/png" sizes="32x32" href="/public/favicon-32x32.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/public/apple-touch-icon.png" />
         <title>Reader Server</title>
-        <style>{css}</style>
+        {/* Como filho, o CSS sairia escapado (`"Segoe UI"` virava `&quot;Segoe UI&quot;`) e o navegador descartava a regra da fonte. */}
+        <style dangerouslySetInnerHTML={{ __html: css }} />
       </head>
       <body>
         <main>

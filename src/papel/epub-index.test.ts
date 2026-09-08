@@ -65,6 +65,21 @@ test("paragrafoDoXpath casa as três escritas: com [1], sem [1], com /text().N e
   expect(paragrafoDoXpath(idx, "/body/DocFragment[1]/body/div[1]/p[1].0")).toBe(2);
 });
 
+test("entrada do sumário cujo item não tem parágrafos não rouba o título do capítulo seguinte", () => {
+  const idx = indexarEpub(
+    montarEpub([
+      { nome: "c1.xhtml", titulo: "Um", corpo: "<p>Primeiro capítulo.</p>" },
+      { nome: "figura.xhtml", titulo: "Ilustração", corpo: `<div><img src="x.png"/></div>` },
+      { nome: "c2.xhtml", titulo: "Dois", corpo: "<p>Segundo capítulo.</p>" },
+    ]),
+    "d"
+  );
+  expect(idx.chapters).toEqual([
+    { title: "Um", spine: 1, paragraph: 0 },
+    { title: "Dois", spine: 3, paragraph: 1 },
+  ]);
+});
+
 test("sem sumário, cada item da espinha vira 'Seção N'", () => {
   const idx = indexarEpub(montarEpub([{ nome: "a.xhtml", corpo: "<p>a</p>" }, { nome: "b.xhtml", corpo: "<p>b</p>" }], { semSumario: true }), "d");
   expect(idx.chapters).toEqual([{ title: "Seção 1", spine: 1, paragraph: 0 }, { title: "Seção 2", spine: 2, paragraph: 1 }]);

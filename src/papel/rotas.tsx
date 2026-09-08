@@ -222,7 +222,9 @@ export function criarRotasPapel(deps: DepsPapel): Hono<Env> {
     if (escopo.length === 0) return voltar("Este capítulo não tem texto. Escolha outro.");
 
     const mostrar = (principal: number, outros: number[], metodo: string, origem: string, confianca: number | null, textoEntrada: string, duvidoso: boolean) =>
-      c.html(<TelaResultado livro={livro} capitulo={titulo} principal={candidatoTela(indice.paragraphs, principal)} outros={outros.filter((o) => o !== principal).map((o) => candidatoTela(indice.paragraphs, o))}
+      // O cabeçalho mostra o capítulo de ONDE o parágrafo está: a busca no livro inteiro
+      // (quando o capítulo escolhido não tinha o trecho) pode achar em outro capítulo.
+      c.html(<TelaResultado livro={livro} capitulo={capituloDoParagrafo(indice, principal)?.title ?? titulo} principal={candidatoTela(indice.paragraphs, principal)} outros={outros.filter((o) => o !== principal).map((o) => candidatoTela(indice.paragraphs, o))}
         metodo={metodo} origem={origem} confianca={confianca} textoEntrada={textoEntrada} pagina={pagina} usouIA={origem === "ia"} duvidoso={duvidoso} />);
 
     if (modo === "inicio") return mostrar(escopo[0], [], "capitulo", "manual", null, "", false);
