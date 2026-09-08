@@ -153,7 +153,8 @@ Todas em `/papel/*`, exceto o painel. Todas exigem sessão, exceto a página e o
 ### 6.2 Casamento local (`casamento.ts`)
 
 - Normalização: minúsculas, sem acentos, sem pontuação, espaços colapsados.
-- Trigramas de caracteres; similaridade de Dice entre o trecho e (a) o início de cada parágrafo, cortado em 1,15× o tamanho do trecho (era 1,5× no desenho; ajustado na implementação porque a janela mais larga baixava a similaridade de trechos exatos para ~0,79), e (b) o parágrafo inteiro; vale o maior.
+- Trigramas de caracteres; similaridade de Dice entre o trecho e (a) o parágrafo inteiro e (b) uma **janela deslizante** de 1,15× o tamanho do trecho (era 1,5× no desenho; ajustado na implementação porque a janela mais larga baixava a similaridade de trechos exatos para ~0,79), passo `max(8, |trecho|/4)`, andando do início ao fim do parágrafo; vale o maior.
+- A janela começa no início (o caso "primeiras palavras") e continua até o fim porque a frase digitada costuma ser do **meio** do parágrafo: só com prefixo e parágrafo inteiro, uma frase do meio dava Dice ~0,2 e caía em "Não encontrei" (visto no Chrome com "His grey eyes shone and twinkled, and his usually pale face").
 - Confiante: melhor ≥ 0,60 **e** vantagem ≥ 0,10 sobre o segundo. Duvidoso: melhor entre 0,40 e 0,60, ou vantagem menor que 0,10 → devolve 3 candidatos. Abaixo de 0,40: não encontrado.
 - Escopo: capítulo escolhido; se não encontrado, o livro inteiro (só para texto digitado).
 

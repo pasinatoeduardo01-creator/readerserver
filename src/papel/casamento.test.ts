@@ -33,6 +33,12 @@ test("primeiras palavras exatas: confiante no parágrafo certo", () => {
   expect(r.candidatos[0].paragraph).toBe(1);
 });
 
+test("frase do meio do parágrafo casa: confiante no parágrafo certo", () => {
+  const r = casarTrecho("his usually pale face was flushed", idx, paragrafosDoCapitulo(idx, 0));
+  expect(r.status).toBe("confiante");
+  expect(r.candidatos[0].paragraph).toBe(1);
+});
+
 test("erros de OCR e hifenização ainda casam", () => {
   const r = casarTrecho("The fire bumed brigthly, and the soft radi-\nance of the incandescent lig hts", idx, paragrafosDoCapitulo(idx, 0));
   expect(r.status).toBe("confiante");

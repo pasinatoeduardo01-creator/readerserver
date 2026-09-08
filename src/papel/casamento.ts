@@ -32,14 +32,26 @@ function dice(a: Set<string>, b: Set<string>): number {
   return (2 * comum) / (a.size + b.size);
 }
 
-/** Maior entre a similaridade com o início do parágrafo (1,15× o tamanho do trecho) e com o parágrafo inteiro. */
+/**
+ * Maior similaridade entre o trecho e o parágrafo, comparando com o parágrafo
+ * inteiro e com uma janela deslizante de 1,15× o tamanho do trecho. A janela
+ * começa no início do parágrafo (o caso "primeiras palavras") e anda até o fim,
+ * porque a frase digitada muitas vezes é do MEIO do parágrafo: aí o prefixo não
+ * casa e o parágrafo inteiro dilui o Dice a ~0,2.
+ */
 export function similaridade(trecho: string, paragrafo: string): number {
   const q = normalizarTexto(trecho);
   const p = normalizarTexto(paragrafo);
   if (!q || !p) return 0;
   const tq = trigramas(q);
-  const inicio = p.slice(0, Math.ceil(q.length * 1.15));
-  return Math.max(dice(tq, trigramas(inicio)), dice(tq, trigramas(p)));
+  let melhor = dice(tq, trigramas(p));
+  const janela = Math.ceil(q.length * 1.15);
+  const passo = Math.max(8, Math.floor(q.length / 4));
+  for (let i = 0; ; i += passo) {
+    melhor = Math.max(melhor, dice(tq, trigramas(p.slice(i, i + janela))));
+    if (i + janela >= p.length) break;
+  }
+  return melhor;
 }
 
 export function paragrafosDoCapitulo(indice: IndiceLivro, capitulo: number): number[] {
