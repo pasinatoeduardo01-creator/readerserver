@@ -451,7 +451,7 @@ app.put("/syncs/progress", authMiddleware, async (c) => {
   }
 
   try {
-    gravarProgresso(db, {
+    const { ignorado } = gravarProgresso(db, {
       userId: userId as number,
       document,
       progress,
@@ -462,6 +462,11 @@ app.put("/syncs/progress", authMiddleware, async (c) => {
       title: metadata?.title ?? null,
       authors: metadata?.authors ?? null,
     });
+
+    if (ignorado) {
+      logger.warn({ requestId, userId, document, percentage, device, device_id }, "Progress update ignored: device re-sent its last position after another device advanced");
+      return c.json({ status: "success" }, 200);
+    }
 
     logger.info({ requestId, userId, document, percentage, device, device_id, metadata }, "Progress updated successfully");
     return c.json({ status: "success" }, 200);

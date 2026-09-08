@@ -59,3 +59,20 @@ test("credencial errada não passa e não vaza progresso", async () => {
   const chaveErrada = await app.request(`/syncs/progress/${DOCUMENTO}`, { headers: { "x-auth-user": USUARIO, "x-auth-key": "outra" } });
   expect(chaveErrada.status).toBe(401);
 });
+
+test("reenvio cego do Kindle responde 200 mas não apaga a posição mais nova do X3", async () => {
+  const enviar = (corpo: object) =>
+    app.request("/syncs/progress", {
+      method: "PUT",
+      headers: { ...autenticado, "content-type": "application/json" },
+      body: JSON.stringify({ document: DOCUMENTO, ...corpo }),
+    });
+  const x3 = await enviar({ progress: "/body/DocFragment[9]/body", percentage: 0.333462, device: "CrossPoint", device_id: "crosspoint-reader" });
+  expect(x3.status).toBe(200);
+  const kindleDeNovo = await enviar({ progress: "/body/DocFragment[8]/body/div/p[4]/text().287", percentage: 0.2955, device: "KindleBasic3", device_id: "kindle-1" });
+  expect(kindleDeNovo.status).toBe(200);
+  expect(await kindleDeNovo.json()).toEqual({ status: "success" });
+
+  const ler = await app.request(`/syncs/progress/${DOCUMENTO}`, { headers: autenticado });
+  expect(await ler.json()).toMatchObject({ progress: "/body/DocFragment[9]/body", percentage: 0.333462, device: "CrossPoint" });
+});

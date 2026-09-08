@@ -38,6 +38,24 @@ export function abrirBanco(caminho = process.env.DB_PATH || "data/koreader-sync.
   db.run(`CREATE INDEX IF NOT EXISTS idx_progress_document ON progress(document)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_progress_user_id ON progress(user_id)`);
 
+  // Última posição enviada por cada aparelho (guarda contra o reenvio cego do KOReader).
+  // Banco antigo: a posição atual de cada livro passa a valer como o último envio daquele aparelho.
+  db.run(`
+    CREATE TABLE IF NOT EXISTS device_progress (
+      user_id INTEGER NOT NULL,
+      document TEXT NOT NULL,
+      device_id TEXT NOT NULL,
+      progress TEXT NOT NULL,
+      percentage REAL NOT NULL,
+      timestamp INTEGER NOT NULL,
+      PRIMARY KEY(user_id, document, device_id)
+    )
+  `);
+  db.run(`
+    INSERT OR IGNORE INTO device_progress (user_id, document, device_id, progress, percentage, timestamp)
+    SELECT user_id, document, device_id, progress, percentage, timestamp FROM progress
+  `);
+
   db.run(`
     CREATE TABLE IF NOT EXISTS books (
       document TEXT PRIMARY KEY,
