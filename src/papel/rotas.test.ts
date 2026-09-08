@@ -189,10 +189,11 @@ async function livroPronto(): Promise<{ cookie: string; hash: string }> {
   return { cookie, hash };
 }
 
-async function localizar(cookie: string, hash: string, campos: Record<string, string>, foto?: Uint8Array) {
+async function localizar(cookie: string, hash: string, campos: Record<string, string>, foto?: Uint8Array, tipoFoto = "image/jpeg") {
   const form = new FormData();
   for (const [k, v] of Object.entries(campos)) form.append(k, v);
-  if (foto) form.append("foto", new File([foto], "pagina.jpg", { type: "image/jpeg" }));
+  // O Bun deduz o tipo do multipart pela extensão do nome, então o nome acompanha o tipo.
+  if (foto) form.append("foto", new File([foto], `pagina.${tipoFoto.split("/")[1]}`, { type: tipoFoto }));
   return app.request(`/papel/livros/${hash}/localizar`, comCookie(cookie, { method: "POST", body: form }));
 }
 
@@ -242,6 +243,14 @@ test("foto sem chave de API avisa; com chave usa a IA e mostra o parágrafo dela
   expect(html).toContain('name="paragrafo" value="1"');    // iaFalsa devolve o parágrafo 1 do capítulo 0
   expect(html).toContain('name="origem" value="ia"');
   expect(html).toContain('name="metodo" value="foto"');
+});
+
+test("foto em formato que a API não aceita volta com o formato na mensagem", async () => {
+  const { cookie, hash } = await livroPronto();
+  await salvarChaveApi(db, 1, "k", SALT);
+  const r = await localizar(cookie, hash, { capitulo: "0", modo: "auto" }, new Uint8Array([1, 2, 3]), "image/heic");
+  expect(r.status).toBe(400);
+  expect(await r.text()).toContain("Formato de foto não aceito");
 });
 
 test("texto que não casa e sem chave: mensagem com alternativas; parágrafos gêmeos: candidatos", async () => {

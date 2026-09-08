@@ -20,6 +20,9 @@ type Env = { Variables: { userId: number } };
 /** Todo `document` nosso é o MD5 parcial do KOReader; nada além disso vira caminho nem cabeçalho. */
 const HASH = /^[0-9a-f]{32}$/;
 
+/** Os únicos formatos de imagem que a API da Anthropic aceita. */
+const TIPOS_DE_FOTO = ["image/jpeg", "image/png", "image/webp"];
+
 function md5(s: string): string {
   return new Bun.CryptoHasher("md5").update(s).digest("hex");
 }
@@ -226,9 +229,11 @@ export function criarRotasPapel(deps: DepsPapel): Hono<Env> {
 
     if (foto) {
       if (foto.size > 5 * 1024 * 1024) return voltar("A foto passou de 5 MB mesmo reduzida. Tente de novo com menos zoom.");
+      // Sem forçar image/jpeg: mandar um HEIC rotulado de JPEG só faz a API recusar com uma mensagem obscura.
+      if (!TIPOS_DE_FOTO.includes(foto.type)) return voltar("Formato de foto não aceito (" + foto.type + "). Use JPEG, PNG ou WebP.");
       const chave = await dados.lerChaveApi(db, userId, salt);
       if (!chave) return voltar("Sem chave de API: não dá para ler a foto. Digite as primeiras palavras ou marque o início do capítulo.");
-      const tipo = (["image/jpeg", "image/png", "image/webp"].includes(foto.type) ? foto.type : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp";
+      const tipo = foto.type as "image/jpeg" | "image/png" | "image/webp";
       const base64 = Buffer.from(await foto.arrayBuffer()).toString("base64");
       const r = await ia.localizar({ chave, paragrafos: escopo.map((i) => ({ texto: indice.paragraphs[i].text })), imagem: { base64, mediaType: tipo } });
       if (r.status === "erro") return voltar(r.mensagem);
