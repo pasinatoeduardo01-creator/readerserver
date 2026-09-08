@@ -4,3 +4,4 @@ node_modules/
 *.db
 server.js
 .DS_Store
+data/

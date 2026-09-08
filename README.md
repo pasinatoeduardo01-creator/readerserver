@@ -55,6 +55,21 @@ docker compose up -d
 5. Test with "Push progress from this device now"
 6. Enable automatic progress syncing if desired
 
+## Marcar no papel (livro físico)
+
+`https://readerserver.up.railway.app/papel` no celular. Login com o mesmo usuário e senha dos aparelhos (cookie válido por 30 dias).
+
+1. **Enviar o EPUB** uma vez por livro: tem de ser a MESMA cópia que está no Kindle/Readest/X3 (o servidor confere o hash e recusa cópia diferente de um livro já sincronizado).
+2. **Configurações → Chave de API** (Anthropic): necessária para foto e para livro traduzido. Sem ela, só o texto digitado em livro do mesmo idioma funciona. Guardada cifrada no banco.
+3. **Marcar onde parei**: escolher o capítulo, tirar a foto da página (ou digitar as primeiras palavras, ou marcar o início do capítulo), informar a página do papel se quiser, conferir o parágrafo e confirmar. Os aparelhos pegam a posição na próxima sincronização.
+4. Na tela do livro, cadastrar o **total de páginas do papel** para o painel mostrar "≈ pág. N no papel".
+
+Convenção da foto: a posição vai para o primeiro parágrafo completo da página fotografada; "O de cima/O de baixo" ajustam. A foto não é guardada; só o texto transcrito fica no histórico.
+
+Limitação: o X3 (Smart sync) aplica a posição mais avançada em porcentagem, e a porcentagem do papel é calculada por caracteres (difere 1–2 pontos da do aparelho). Marque no papel pelo menos algumas páginas à frente da posição do X3.
+
+Dados: tabelas `books`, `paper_marks`, `settings`; arquivos em `/app/data/books/`. Testes: `bun test` na pasta `app/`.
+
 ## Configuration
 
 All configuration is through environment variables. None are required — defaults work out of the box.
