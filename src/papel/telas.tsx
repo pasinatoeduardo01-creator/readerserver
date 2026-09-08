@@ -1,4 +1,5 @@
 import type { LivroNaLista, Livro, Marca } from "./dados";
+import type { Capitulo, Paragrafo } from "./epub-index";
 
 const css = `
   :root { --bg:#fff; --fg:#111; --muted:#5b5b5b; --line:#e4e4e4; --accent:#0a5bff; --alert:#c8102e; --track:#ececec; }
@@ -144,4 +145,75 @@ export function TelaLivro(props: { livro: Livro; progresso: { percentage: number
       </form>
     </Pagina>
   );
+}
+
+export function TelaMarcar(props: { livro: Livro; capitulos: Capitulo[]; capituloAtual: number; temChave: boolean; erro?: string }) {
+  return (
+    <Pagina titulo="Marcar onde parei" script>
+      <div class="topo"><h1>Marcar onde parei</h1><p class="muted"><a href={`/papel/livros/${props.livro.document}`}>{props.livro.title ?? "Livro"}</a></p></div>
+      {props.erro ? <p class="erro">{props.erro}</p> : null}
+      {!props.temChave ? <p class="aviso">Sem chave de API: a foto e os livros traduzidos não funcionam. Digite as primeiras palavras do parágrafo, ou marque o início do capítulo. <a href="/papel/config">Configurações</a></p> : null}
+      <form method="post" action={`/papel/livros/${props.livro.document}/localizar`} enctype="multipart/form-data" id="form-marcar">
+        <label for="capitulo">Capítulo</label>
+        <select id="capitulo" name="capitulo">
+          {props.capitulos.map((c, i) => (i === props.capituloAtual ? <option value={String(i)} selected>{c.title}</option> : <option value={String(i)}>{c.title}</option>))}
+        </select>
+        <label for="foto">Foto da página</label>
+        <input id="foto" name="foto" type="file" accept="image/*" capture="environment" />
+        <img id="previa" alt="" style="max-width:100%; display:none; margin-top:.5rem; border-radius:8px" />
+        <label for="trecho">Ou as primeiras palavras do parágrafo</label>
+        <textarea id="trecho" name="trecho" placeholder="Pode ditar pelo teclado do celular"></textarea>
+        <label><input type="checkbox" name="modo" value="inicio" /> Ou só o início do capítulo</label>
+        <label for="pagina">Página do livro de papel (opcional)</label>
+        <input id="pagina" name="pagina" type="number" min="1" inputmode="numeric" />
+        <button class="btn bloco" type="submit" id="botao-localizar">Localizar</button>
+      </form>
+    </Pagina>
+  );
+}
+
+export interface CandidatoTela { paragrafo: number; texto: string; anterior: string | null; seguinte: string | null }
+
+export function TelaResultado(props: {
+  livro: Livro; capitulo: string; principal: CandidatoTela; outros: CandidatoTela[];
+  metodo: string; origem: string; confianca: number | null; textoEntrada: string; pagina: string; usouIA: boolean; duvidoso: boolean;
+}) {
+  const ocultos = (paragrafo: number) => (
+    <>
+      <input type="hidden" name="paragrafo" value={String(paragrafo)} />
+      <input type="hidden" name="pagina" value={props.pagina} />
+      <input type="hidden" name="metodo" value={props.metodo} />
+      <input type="hidden" name="origem" value={props.origem} />
+      <input type="hidden" name="confianca" value={props.confianca === null ? "" : String(props.confianca)} />
+      <input type="hidden" name="texto_entrada" value={props.textoEntrada} />
+    </>
+  );
+  const acao = `/papel/livros/${props.livro.document}/confirmar`;
+  return (
+    <Pagina titulo="Confirmar posição">
+      <div class="topo"><h1>{props.duvidoso ? "Qual destes?" : "É aqui?"}</h1><p class="muted">{props.capitulo}</p></div>
+      {props.usouIA ? <p class="muted">Localizado pela IA{props.confianca !== null ? ` (confiança ${Math.round(props.confianca * 100)}%)` : ""}.</p> : null}
+      {props.principal.anterior ? <div class="par muted">{props.principal.anterior}</div> : null}
+      <div class="par alvo">{props.principal.texto}</div>
+      {props.principal.seguinte ? <div class="par muted">{props.principal.seguinte}</div> : null}
+      <div class="acoes">
+        <form method="post" action={acao}>{ocultos(props.principal.paragrafo)}<button class="btn" type="submit">É este</button></form>
+        {props.principal.anterior ? <form method="post" action={acao}>{ocultos(props.principal.paragrafo - 1)}<button class="btn sec" type="submit">O de cima</button></form> : null}
+        {props.principal.seguinte ? <form method="post" action={acao}>{ocultos(props.principal.paragrafo + 1)}<button class="btn sec" type="submit">O de baixo</button></form> : null}
+      </div>
+      {props.outros.length > 0 ? (
+        <>
+          <h2>Outras possibilidades</h2>
+          {props.outros.map((o) => (
+            <form method="post" action={acao}><div class="par">{o.texto}</div>{ocultos(o.paragrafo)}<button class="btn sec bloco" type="submit">É este</button></form>
+          ))}
+        </>
+      ) : null}
+      <a class="btn sec bloco" href={`/papel/livros/${props.livro.document}/marcar`}>Tentar de novo</a>
+    </Pagina>
+  );
+}
+
+export function candidatoTela(paragrafos: Paragrafo[], i: number): CandidatoTela {
+  return { paragrafo: i, texto: paragrafos[i].text, anterior: paragrafos[i - 1]?.text ?? null, seguinte: paragrafos[i + 1]?.text ?? null };
 }

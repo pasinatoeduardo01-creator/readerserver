@@ -10,6 +10,7 @@ import { NOME_COOKIE } from "./sessao";
 import { montarEpub } from "./epub-teste";
 import { hashParcialKoreader } from "./hash";
 import type { LocalizadorIA } from "./ia";
+import { salvarChaveApi } from "./dados";
 
 const SALT = "salt-teste";
 let db: ReturnType<typeof abrirBanco>;
@@ -177,4 +178,81 @@ test("tela do livro: salva total de páginas e mostra página estimada", async (
   const tela = await (await app.request(`/papel/livros/${hash}`, comCookie(cookie))).text();
   expect(tela).toMatch(/≈ pág\. \d+/);
   expect(tela).toContain("Kindle");
+});
+
+async function livroPronto(): Promise<{ cookie: string; hash: string }> {
+  const bytes = epubDeTeste();
+  const hash = hashParcialKoreader(bytes);
+  gravarProgresso(db, { userId: 1, document: hash, progress: "/body/DocFragment[1]/body/p", percentage: 0.05, device: "KindleBasic3", deviceId: "k", title: "Livro de Teste", authors: "Autora Fictícia", filename: "livro.epub" });
+  const cookie = await logar();
+  await enviarEpub(cookie, bytes);
+  return { cookie, hash };
+}
+
+async function localizar(cookie: string, hash: string, campos: Record<string, string>, foto?: Uint8Array) {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(campos)) form.append(k, v);
+  if (foto) form.append("foto", new File([foto], "pagina.jpg", { type: "image/jpeg" }));
+  return app.request(`/papel/livros/${hash}/localizar`, comCookie(cookie, { method: "POST", body: form }));
+}
+
+test("formulário de marcar lista os capítulos e pré-seleciona o da posição atual", async () => {
+  const { cookie, hash } = await livroPronto();
+  const html = await (await app.request(`/papel/livros/${hash}/marcar`, comCookie(cookie))).text();
+  // O JSX do Hono serializa atributo booleano como `selected=""` (nunca como nome solto).
+  expect(html).toContain('<option value="0" selected="">Um</option>');
+  expect(html).toContain('<option value="1">Dois</option>');
+  expect(html).toContain('name="foto"');
+  expect(html).toContain('name="trecho"');
+});
+
+test("texto no mesmo idioma: casa localmente, mostra vizinhos e confirma gravando no progresso", async () => {
+  const { cookie, hash } = await livroPronto();
+  const r = await localizar(cookie, hash, { capitulo: "1", modo: "auto", trecho: "E segue por aqui", pagina: "42" });
+  const html = await r.text();
+  expect(r.status).toBe(200);
+  expect(html).toContain("E segue por aqui.");
+  expect(html).toContain('name="paragrafo" value="3"');
+  expect(html).toContain('name="origem" value="local"');
+  expect(html).toContain("Capítulo dois começa aqui.");   // vizinho de cima
+  const conf = await app.request(`/papel/livros/${hash}/confirmar`, comCookie(cookie, { method: "POST", body: new URLSearchParams({ paragrafo: "3", pagina: "42", metodo: "texto", origem: "local", confianca: "0.9", texto_entrada: "E segue por aqui" }) }));
+  expect(conf.status).toBe(302);
+  const prog = db.prepare("SELECT * FROM progress WHERE document = ?").get(hash) as any;
+  expect(prog).toMatchObject({ device: "Livro físico", device_id: "papel", progress: "/body/DocFragment[2]/body/p[2]", title: "Livro de Teste", filename: "livro.epub" });
+  expect(prog.percentage).toBeGreaterThan(0.5);
+  const marca = db.prepare("SELECT * FROM paper_marks WHERE document = ?").get(hash) as any;
+  expect(marca).toMatchObject({ paragraph: 3, paper_page: 42, method: "texto", matched_by: "local" });
+});
+
+test("início do capítulo grava o primeiro parágrafo do capítulo", async () => {
+  const { cookie, hash } = await livroPronto();
+  const html = await (await localizar(cookie, hash, { capitulo: "1", modo: "inicio" })).text();
+  expect(html).toContain('name="paragrafo" value="2"');
+  expect(html).toContain('name="origem" value="manual"');
+});
+
+test("foto sem chave de API avisa; com chave usa a IA e mostra o parágrafo dela", async () => {
+  const { cookie, hash } = await livroPronto();
+  const sem = await localizar(cookie, hash, { capitulo: "0", modo: "auto" }, new Uint8Array([1, 2, 3]));
+  expect(await sem.text()).toContain("Sem chave de API");
+  await salvarChaveApi(db, 1, "k", SALT);
+  const com = await localizar(cookie, hash, { capitulo: "0", modo: "auto" }, new Uint8Array([1, 2, 3]));
+  const html = await com.text();
+  expect(html).toContain('name="paragrafo" value="1"');    // iaFalsa devolve o parágrafo 1 do capítulo 0
+  expect(html).toContain('name="origem" value="ia"');
+  expect(html).toContain('name="metodo" value="foto"');
+});
+
+test("texto que não casa e sem chave: mensagem com alternativas; parágrafos gêmeos: candidatos", async () => {
+  const { cookie, hash } = await livroPronto();
+  const nada = await (await localizar(cookie, hash, { capitulo: "0", modo: "auto", trecho: "frase inexistente neste livro" })).text();
+  expect(nada).toContain("Não encontrei");
+  expect(nada).toContain("início do capítulo");
+});
+
+test("confirmar com parágrafo inválido devolve 400 e não grava", async () => {
+  const { cookie, hash } = await livroPronto();
+  const r = await app.request(`/papel/livros/${hash}/confirmar`, comCookie(cookie, { method: "POST", body: new URLSearchParams({ paragrafo: "999", metodo: "texto", origem: "local" }) }));
+  expect(r.status).toBe(400);
+  expect((db.prepare("SELECT device FROM progress WHERE document = ?").get(hash) as any).device).toBe("KindleBasic3");
 });

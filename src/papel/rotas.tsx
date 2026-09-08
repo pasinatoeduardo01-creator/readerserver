@@ -8,8 +8,10 @@ import { getCookie } from "hono/cookie";
 import { criarCookie, lerCookie, NOME_COOKIE, exigeSessao, gravarCookieSessao, apagarCookieSessao } from "./sessao";
 import { indexarEpub, ErroEpub, capituloDoParagrafo, paragrafoDoXpath } from "./epub-index";
 import { hashParcialKoreader } from "./hash";
+import { casarTrecho, paragrafosDoCapitulo } from "./casamento";
+import { gravarProgresso } from "../progresso";
 import * as dados from "./dados";
-import { TelaLogin, TelaLivros, TelaConfig, TelaLivro } from "./telas";
+import { TelaLogin, TelaLivros, TelaConfig, TelaLivro, TelaMarcar, TelaResultado, candidatoTela } from "./telas";
 import type { LocalizadorIA } from "./ia";
 
 export interface DepsPapel { db: Database; salt: string; dirLivros: string; ia: LocalizadorIA; logger: pino.Logger }
@@ -168,6 +170,112 @@ export function criarRotasPapel(deps: DepsPapel): Hono<Env> {
     const n = parseInt(String(form["paginas"] ?? ""), 10);
     dados.salvarPaginas(db, userId, document, Number.isFinite(n) && n > 0 ? n : null);
     return c.redirect(`/papel/livros/${document}?msg=${encodeURIComponent("Total de páginas salvo.")}`, 302);
+  });
+
+  /** Índice do livro, ou null quando o arquivo sumiu do disco: quem chama volta para a tela do livro, que pede o reenvio. */
+  async function indiceOuNulo(userId: number, livro: dados.Livro) {
+    try {
+      return await dados.carregarIndice(livro.index_path);
+    } catch (e) {
+      logger.warn({ userId, document: livro.document, err: e }, "Índice do livro ilegível");
+      return null;
+    }
+  }
+
+  app.get("/papel/livros/:document/marcar", async (c) => {
+    const userId = c.get("userId");
+    const document = c.req.param("document");
+    if (!HASH.test(document)) return c.notFound();
+    const livro = dados.obterLivro(db, userId, document);
+    if (!livro) return c.redirect("/papel?aviso=" + encodeURIComponent("Envie o EPUB deste livro primeiro."), 302);
+    const indice = await indiceOuNulo(userId, livro);
+    if (!indice) return c.redirect(`/papel/livros/${document}`, 302);
+    const progresso = dados.progressoDoLivro(db, userId, livro.document);
+    const p = progresso ? paragrafoDoXpath(indice, progresso.progress) : null;
+    const atual = p !== null ? capituloDoParagrafo(indice, p) : null;
+    const capituloAtual = atual ? indice.chapters.indexOf(atual) : 0;
+    const temChave = !!(await dados.lerChaveApi(db, userId, salt));
+    return c.html(<TelaMarcar livro={livro} capitulos={indice.chapters} capituloAtual={capituloAtual} temChave={temChave} erro={c.req.query("erro")} />);
+  });
+
+  app.post("/papel/livros/:document/localizar", async (c) => {
+    const userId = c.get("userId");
+    const document = c.req.param("document");
+    if (!HASH.test(document)) return c.notFound();
+    const livro = dados.obterLivro(db, userId, document);
+    if (!livro) return c.redirect("/papel", 302);
+    const indice = await indiceOuNulo(userId, livro);
+    if (!indice) return c.redirect(`/papel/livros/${document}`, 302);
+    const form = await c.req.parseBody();
+    const capitulo = parseInt(String(form["capitulo"] ?? "0"), 10) || 0;
+    const modo = String(form["modo"] ?? "auto");
+    const trecho = String(form["trecho"] ?? "").trim();
+    const pagina = String(form["pagina"] ?? "").trim();
+    const foto = form["foto"] instanceof File && (form["foto"] as File).size > 0 ? (form["foto"] as File) : null;
+    const escopo = paragrafosDoCapitulo(indice, capitulo);
+    const titulo = indice.chapters[capitulo]?.title ?? "Capítulo";
+    const temChave = !!(await dados.lerChaveApi(db, userId, salt));
+    const voltar = (erro: string) => c.html(<TelaMarcar livro={livro} capitulos={indice.chapters} capituloAtual={capitulo} temChave={temChave} erro={erro} />, 400);
+    if (escopo.length === 0) return voltar("Este capítulo não tem texto. Escolha outro.");
+
+    const mostrar = (principal: number, outros: number[], metodo: string, origem: string, confianca: number | null, textoEntrada: string, duvidoso: boolean) =>
+      c.html(<TelaResultado livro={livro} capitulo={titulo} principal={candidatoTela(indice.paragraphs, principal)} outros={outros.filter((o) => o !== principal).map((o) => candidatoTela(indice.paragraphs, o))}
+        metodo={metodo} origem={origem} confianca={confianca} textoEntrada={textoEntrada} pagina={pagina} usouIA={origem === "ia"} duvidoso={duvidoso} />);
+
+    if (modo === "inicio") return mostrar(escopo[0], [], "capitulo", "manual", null, "", false);
+
+    if (foto) {
+      if (foto.size > 5 * 1024 * 1024) return voltar("A foto passou de 5 MB mesmo reduzida. Tente de novo com menos zoom.");
+      const chave = await dados.lerChaveApi(db, userId, salt);
+      if (!chave) return voltar("Sem chave de API: não dá para ler a foto. Digite as primeiras palavras ou marque o início do capítulo.");
+      const tipo = (["image/jpeg", "image/png", "image/webp"].includes(foto.type) ? foto.type : "image/jpeg") as "image/jpeg" | "image/png" | "image/webp";
+      const base64 = Buffer.from(await foto.arrayBuffer()).toString("base64");
+      const r = await ia.localizar({ chave, paragrafos: escopo.map((i) => ({ texto: indice.paragraphs[i].text })), imagem: { base64, mediaType: tipo } });
+      if (r.status === "erro") return voltar(r.mensagem);
+      if (r.paragrafo === null) return voltar("Não encontrei esta página no capítulo escolhido. Confira o capítulo, digite as primeiras palavras, ou marque o início do capítulo.");
+      const principal = escopo[r.paragrafo];
+      const outros = r.candidatos.map((k) => escopo[k]).filter((x) => x !== undefined);
+      return mostrar(principal, r.confianca < 0.7 ? outros : [], "foto", "ia", r.confianca, r.transcricao, r.confianca < 0.7);
+    }
+
+    if (!trecho) return voltar("Tire a foto, digite as primeiras palavras, ou marque o início do capítulo.");
+    const local = casarTrecho(trecho, indice, escopo);
+    if (local.status === "confiante") return mostrar(local.candidatos[0].paragraph, [], "texto", "local", local.candidatos[0].score, trecho, false);
+    if (local.status === "duvidoso") return mostrar(local.candidatos[0].paragraph, local.candidatos.map((k) => k.paragraph), "texto", "local", local.candidatos[0].score, trecho, true);
+    const noLivro = casarTrecho(trecho, indice, indice.paragraphs.map((_, i) => i));
+    if (noLivro.status === "confiante") return mostrar(noLivro.candidatos[0].paragraph, [], "texto", "local", noLivro.candidatos[0].score, trecho, false);
+    const chave = await dados.lerChaveApi(db, userId, salt);
+    if (!chave) return voltar("Não encontrei este trecho. Confira o capítulo, tente outras palavras, ou marque o início do capítulo. Para livro traduzido, cadastre a chave de API em Configurações.");
+    const r = await ia.localizar({ chave, paragrafos: escopo.map((i) => ({ texto: indice.paragraphs[i].text })), trecho });
+    if (r.status === "erro") return voltar(r.mensagem);
+    if (r.paragrafo === null) return voltar("Não encontrei este trecho no capítulo escolhido, nem pela IA. Confira o capítulo ou marque o início do capítulo.");
+    const outros = r.candidatos.map((k) => escopo[k]).filter((x) => x !== undefined);
+    return mostrar(escopo[r.paragrafo], r.confianca < 0.7 ? outros : [], "texto", "ia", r.confianca, r.transcricao || trecho, r.confianca < 0.7);
+  });
+
+  app.post("/papel/livros/:document/confirmar", async (c) => {
+    const userId = c.get("userId");
+    const document = c.req.param("document");
+    if (!HASH.test(document)) return c.notFound();
+    const livro = dados.obterLivro(db, userId, document);
+    if (!livro) return c.redirect("/papel", 302);
+    const indice = await indiceOuNulo(userId, livro);
+    if (!indice) return c.redirect(`/papel/livros/${document}`, 302);
+    const form = await c.req.parseBody();
+    const paragrafo = parseInt(String(form["paragrafo"] ?? ""), 10);
+    if (!Number.isInteger(paragrafo) || paragrafo < 0 || paragrafo >= indice.paragraphs.length) return c.text("Parágrafo inválido.", 400);
+    const paginaNum = parseInt(String(form["pagina"] ?? ""), 10);
+    const paperPage = Number.isFinite(paginaNum) && paginaNum > 0 ? paginaNum : null;
+    const confNum = parseFloat(String(form["confianca"] ?? ""));
+    const metodo = ["texto", "foto", "capitulo"].includes(String(form["metodo"])) ? String(form["metodo"]) : "texto";
+    const origem = ["local", "ia", "manual"].includes(String(form["origem"])) ? String(form["origem"]) : "manual";
+    const p = indice.paragraphs[paragrafo];
+    const percentage = indice.totalChars > 0 ? p.offset / indice.totalChars : 0;
+    dados.gravarMarca(db, { userId, document: livro.document, paragraph: paragrafo, xpath: p.xpath, charOffset: p.offset, percentage, paperPage, method: metodo, matchedBy: origem, confidence: Number.isFinite(confNum) ? confNum : null, inputText: String(form["texto_entrada"] ?? "").slice(0, 2000) || null });
+    gravarProgresso(db, { userId, document: livro.document, progress: p.xpath, percentage, device: "Livro físico", deviceId: "papel", title: livro.title, authors: livro.authors, filename: null });
+    logger.info({ userId, document: livro.document, xpath: p.xpath, percentage, metodo, origem }, "Marcação no papel gravada");
+    const hora = new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });
+    return c.redirect(`/papel/livros/${livro.document}?msg=${encodeURIComponent(`Gravado às ${hora}. A próxima sincronização dos leitores pega daqui.`)}`, 302);
   });
 
   return app;
