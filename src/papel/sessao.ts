@@ -45,7 +45,11 @@ export function exigeSessao(salt: string): MiddlewareHandler<{ Variables: { user
     const userId = await lerCookie(getCookie(c, NOME_COOKIE), salt);
     if (userId === null) {
       const caminho = new URL(c.req.url).pathname;
-      return c.redirect(`/papel?proximo=${encodeURIComponent(caminho)}`, 302);
+      // Depois do login o navegador faz um GET; repetir um POST é impossível (o corpo
+      // se perde) e cairia em 404 ou erro. Para POST, volta-se à tela que tem o
+      // formulário: /papel/livros/abc/localizar → /papel/livros/abc, /papel/livros → /papel.
+      const destino = c.req.method === "GET" ? caminho : caminho.slice(0, caminho.lastIndexOf("/")) || "/papel";
+      return c.redirect(`/papel?proximo=${encodeURIComponent(destino)}`, 302);
     }
     c.set("userId", userId);
     await next();

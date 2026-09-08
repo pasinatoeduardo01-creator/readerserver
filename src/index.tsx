@@ -76,9 +76,12 @@ interface Config {
   };
 }
 
+/** Salt de fábrica: com ele os cookies de sessão do celular seriam forjáveis por qualquer um. */
+const SALT_PADRAO = "default_salt_change_in_production";
+
 const config: Config = {
   password: {
-    salt: process.env.PASSWORD_SALT || "default_salt_change_in_production",
+    salt: process.env.PASSWORD_SALT || SALT_PADRAO,
   },
   auth: {
     disableUserRegistration:
@@ -305,17 +308,29 @@ app.onError(errorHandler);
 const authRateLimit = rateLimiter({ windowMs: 60_000, max: 10 });
 app.use("/users/*", authRateLimit);
 
-// Área do livro de papel (celular): login por sessão, livros, configurações
-app.route(
-  "/",
-  criarRotasPapel({
-    db,
-    salt: config.password.salt,
-    dirLivros: "data/books",
-    ia: criarLocalizadorIA(),
-    logger,
-  })
-);
+// Área do livro de papel (celular): login por sessão, livros, configurações.
+// O cookie de sessão é assinado com o salt; no salt de fábrica qualquer um forjaria
+// um cookie e entraria como qualquer usuário, então a área inteira fica desligada.
+if (config.password.salt === SALT_PADRAO) {
+  const desligada = (c: Context) =>
+    c.text("Área do celular desligada: defina PASSWORD_SALT.", 503);
+  app.all("/papel", desligada);
+  app.all("/papel/*", desligada);
+  logger.error(
+    "PASSWORD_SALT não definido: a área do celular (/papel) está desligada porque o cookie de sessão seria forjável."
+  );
+} else {
+  app.route(
+    "/",
+    criarRotasPapel({
+      db,
+      salt: config.password.salt,
+      dirLivros: "data/books",
+      ia: criarLocalizadorIA(),
+      logger,
+    })
+  );
+}
 
 // Register endpoint
 app.post("/users/create", async (c) => {
