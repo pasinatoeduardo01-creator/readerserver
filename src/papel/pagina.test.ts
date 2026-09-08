@@ -13,7 +13,7 @@ test("uma marcação puxa a reta para o ponto informado", () => {
   // 40% do texto está na página 100 de 300 (livro com muita nota no fim)
   const marcas = [{ charOffset: 4000, paperPage: 100 }];
   expect(estimarPagina(4000, 10000, 300, marcas)).toBe(100);
-  expect(estimarPagina(2000, 10000, 300, marcas)).toBe(50);      // entre (0,1) e (4000,100)
+  expect(estimarPagina(2000, 10000, 300, marcas)).toBe(51);      // entre (0,1) e (4000,100)
   expect(estimarPagina(7000, 10000, 300, marcas)).toBe(200);     // entre (4000,100) e (10000,300)
 });
 

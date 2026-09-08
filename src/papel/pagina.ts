@@ -2,15 +2,6 @@ import { paragrafoDoXpath, type IndiceLivro } from "./epub-index";
 
 export interface PontoCalibracao { charOffset: number; paperPage: number }
 
-function bankersRound(x: number): number {
-  const floor = Math.floor(x);
-  const frac = x - floor;
-  if (frac < 0.5) return floor;
-  if (frac > 0.5) return Math.ceil(x);
-  // Exactly 0.5: round to nearest even
-  return floor % 2 === 0 ? floor : Math.ceil(x);
-}
-
 export function estimarPagina(charOffset: number, totalChars: number, paperPages: number, marcas: PontoCalibracao[]): number {
   const pontos: PontoCalibracao[] = [{ charOffset: 0, paperPage: 1 }];
   const ordenadas = [...marcas].sort((a, b) => a.charOffset - b.charOffset);
@@ -27,7 +18,7 @@ export function estimarPagina(charOffset: number, totalChars: number, paperPages
     const a = pontos[i - 1], b = pontos[i];
     if (x <= b.charOffset) {
       const fracao = b.charOffset === a.charOffset ? 0 : (x - a.charOffset) / (b.charOffset - a.charOffset);
-      const pagina = bankersRound(a.paperPage + fracao * (b.paperPage - a.paperPage));
+      const pagina = Math.round(a.paperPage + fracao * (b.paperPage - a.paperPage));
       return Math.min(Math.max(pagina, 1), paperPages);
     }
   }
