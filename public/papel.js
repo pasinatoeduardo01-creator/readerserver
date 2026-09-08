@@ -19,15 +19,22 @@
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
       canvas.toBlob(function (blob) {
         URL.revokeObjectURL(url);
-        if (blob && blob.size < arquivo.size) {
-          var reduzido = new File([blob], "pagina.jpg", { type: "image/jpeg" });
-          var dt = new DataTransfer();
-          dt.items.add(reduzido);
-          entrada.files = dt.files;
+        try {
+          if (blob && blob.size < arquivo.size) {
+            try {
+              var reduzido = new File([blob], "pagina.jpg", { type: "image/jpeg" });
+              var dt = new DataTransfer();
+              dt.items.add(reduzido);
+              entrada.files = dt.files;
+            } catch (e) {
+              /* mantém o arquivo original */
+            }
+          }
+          previa.src = canvas.toDataURL("image/jpeg", 0.6);
+          previa.style.display = "block";
+        } finally {
+          botao.disabled = false;
         }
-        previa.src = canvas.toDataURL("image/jpeg", 0.6);
-        previa.style.display = "block";
-        botao.disabled = false;
       }, "image/jpeg", 0.85);
     };
     img.onerror = function () { URL.revokeObjectURL(url); botao.disabled = false; };
