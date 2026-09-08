@@ -71,11 +71,16 @@ export function criarLocalizadorIA(fabrica: FabricaCliente = (chave) => new Anth
         const cliente = fabrica(entrada.chave);
         const resposta = await cliente.messages.parse({
           model: MODELO_IA,
-          max_tokens: 2048,
+          // A transcrição de uma página inteira mais o raciocínio do "effort" cabem
+          // com folga em 16 mil; em 2 mil a resposta era cortada e voltava vazia.
+          max_tokens: 16000,
           system: SISTEMA,
           output_config: { format: zodOutputFormat(Saida), effort: "medium" },
           messages: [{ role: "user", content: blocos }],
         });
+        if (resposta.stop_reason === "max_tokens") {
+          return { status: "erro", mensagem: "A IA não terminou a resposta (limite de tamanho). Tente com um capítulo menor ou por texto." };
+        }
         if (resposta.stop_reason === "refusal" || !resposta.parsed_output) {
           return { status: "erro", mensagem: "A IA não conseguiu localizar o trecho. Tente por texto ou marque o início do capítulo." };
         }

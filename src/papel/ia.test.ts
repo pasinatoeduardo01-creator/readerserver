@@ -47,6 +47,16 @@ test("paragrafo null, número fora da faixa ou recusa viram resultado sem parág
   expect(await ia3.localizar({ chave: "k", paragrafos, trecho: "?" })).toMatchObject({ status: "erro" });
 });
 
+test("resposta cortada pelo limite de tamanho vira mensagem própria; o limite é 16 mil", async () => {
+  const cap: { req?: any } = {};
+  const ia = criarLocalizadorIA(fabricaFalsa({ stop_reason: "max_tokens", parsed_output: null }, cap));
+  expect(await ia.localizar({ chave: "k", paragrafos, trecho: "x" })).toEqual({
+    status: "erro",
+    mensagem: "A IA não terminou a resposta (limite de tamanho). Tente com um capítulo menor ou por texto.",
+  });
+  expect(cap.req.max_tokens).toBe(16000);
+});
+
 test("erros da API viram mensagens em português", async () => {
   const auth = new Anthropic.AuthenticationError(401, {}, "bad key", new Headers());
   const ia = criarLocalizadorIA(fabricaFalsa(null, {}, auth));
