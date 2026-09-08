@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite";
 import { Hono } from "hono";
 import { serveStatic } from "hono/bun";
 import { HTTPException } from "hono/http-exception";
@@ -8,6 +7,8 @@ import { secureHeaders } from "hono/secure-headers";
 import type { Context, Next } from "hono";
 import pino from "pino";
 import { Dashboard, type DashboardRow } from "./dashboard";
+import { abrirBanco } from "./db";
+import { gravarProgresso } from "./progresso";
 
 // =============================================================================
 // Types
@@ -131,52 +132,8 @@ const logger = pino({
 // Database
 // =============================================================================
 
-const db = new Database("data/koreader-sync.db", {
-  create: true,
-});
-
-db.run(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`);
-
-db.run(`
-  CREATE TABLE IF NOT EXISTS progress (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    document TEXT NOT NULL,
-    progress TEXT NOT NULL,
-    percentage REAL NOT NULL,
-    device TEXT NOT NULL,
-    device_id TEXT NOT NULL,
-    filename TEXT,
-    title TEXT,
-    authors TEXT,
-    timestamp INTEGER NOT NULL,
-    FOREIGN KEY(user_id) REFERENCES users(id),
-    UNIQUE(user_id, document)
-  )
-`);
-
-// Migrate existing databases to include metadata columns
-const progressColumns = db
-  .prepare(`PRAGMA table_info(progress)`)
-  .all() as { name: string }[];
-const existingColumnNames = new Set(progressColumns.map((c) => c.name));
-for (const column of ["filename", "title", "authors"]) {
-  if (!existingColumnNames.has(column)) {
-    db.run(`ALTER TABLE progress ADD COLUMN ${column} TEXT`);
-  }
-}
-
-db.run(
-  `CREATE INDEX IF NOT EXISTS idx_progress_document ON progress(document)`
-);
-db.run(`CREATE INDEX IF NOT EXISTS idx_progress_user_id ON progress(user_id)`);
+const db = abrirBanco();
+export { db };
 
 // =============================================================================
 // Rate Limiter
@@ -195,7 +152,7 @@ function rateLimiter({ windowMs, max }: RateLimitOptions) {
     for (const [key, entry] of hits) {
       if (now >= entry.resetAt) hits.delete(key);
     }
-  }, windowMs);
+  }, windowMs).unref();
 
   return async (c: Context, next: Next) => {
     const key =
@@ -498,74 +455,23 @@ app.put("/syncs/progress", authMiddleware, async (c) => {
     throw new HTTPException(400, { message: "Missing required fields" });
   }
 
-  const timestamp = Math.floor(Date.now() / 1000);
-  const filename = metadata?.filename ?? null;
-  const title = metadata?.title ?? null;
-  const authors = metadata?.authors ?? null;
-
   try {
-    db.prepare(
-      `
-      INSERT INTO progress (
-        user_id,
-        document,
-        progress,
-        percentage,
-        device,
-        device_id,
-        filename,
-        title,
-        authors,
-        timestamp
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id, document) DO UPDATE SET
-        progress = excluded.progress,
-        percentage = excluded.percentage,
-        device = excluded.device,
-        device_id = excluded.device_id,
-        filename = COALESCE(excluded.filename, progress.filename),
-        title = COALESCE(excluded.title, progress.title),
-        authors = COALESCE(excluded.authors, progress.authors),
-        timestamp = excluded.timestamp
-    `
-    ).run(
-      userId as number,
+    gravarProgresso(db, {
+      userId: userId as number,
       document,
       progress,
       percentage,
       device,
-      device_id,
-      filename,
-      title,
-      authors,
-      timestamp
-    );
+      deviceId: device_id,
+      filename: metadata?.filename ?? null,
+      title: metadata?.title ?? null,
+      authors: metadata?.authors ?? null,
+    });
 
-    logger.info(
-      {
-        requestId,
-        userId,
-        document,
-        percentage,
-        device,
-        device_id,
-        metadata,
-      },
-      "Progress updated successfully"
-    );
-
+    logger.info({ requestId, userId, document, percentage, device, device_id, metadata }, "Progress updated successfully");
     return c.json({ status: "success" }, 200);
   } catch (error) {
-    logger.error(
-      {
-        requestId,
-        userId,
-        document,
-        error: error instanceof Error ? error.message : String(error),
-      },
-      "Failed to update progress"
-    );
+    logger.error({ requestId, userId, document, error: error instanceof Error ? error.message : String(error) }, "Failed to update progress");
     throw error;
   }
 });
