@@ -9,6 +9,9 @@ import pino from "pino";
 import { Dashboard, type DashboardRow } from "./dashboard";
 import { abrirBanco } from "./db";
 import { gravarProgresso } from "./progresso";
+import { rateLimiter } from "./limite";
+import { criarRotasPapel } from "./papel/rotas";
+import { criarLocalizadorIA } from "./papel/ia";
 
 // =============================================================================
 // Types
@@ -134,46 +137,6 @@ const logger = pino({
 
 const db = abrirBanco();
 export { db };
-
-// =============================================================================
-// Rate Limiter
-// =============================================================================
-
-interface RateLimitOptions {
-  windowMs: number;
-  max: number;
-}
-
-function rateLimiter({ windowMs, max }: RateLimitOptions) {
-  const hits = new Map<string, { count: number; resetAt: number }>();
-
-  setInterval(() => {
-    const now = Date.now();
-    for (const [key, entry] of hits) {
-      if (now >= entry.resetAt) hits.delete(key);
-    }
-  }, windowMs).unref();
-
-  return async (c: Context, next: Next) => {
-    const key =
-      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
-      c.req.header("x-real-ip") ??
-      "unknown";
-    const now = Date.now();
-    const entry = hits.get(key);
-
-    if (!entry || now >= entry.resetAt) {
-      hits.set(key, { count: 1, resetAt: now + windowMs });
-    } else {
-      entry.count++;
-      if (entry.count > max) {
-        throw new HTTPException(429, { message: "Too many requests" });
-      }
-    }
-
-    await next();
-  };
-}
 
 // =============================================================================
 // Middleware
@@ -340,6 +303,18 @@ app.onError(errorHandler);
 // Rate limit auth-related endpoints
 const authRateLimit = rateLimiter({ windowMs: 60_000, max: 10 });
 app.use("/users/*", authRateLimit);
+
+// Área do livro de papel (celular): login por sessão, livros, configurações
+app.route(
+  "/",
+  criarRotasPapel({
+    db,
+    salt: config.password.salt,
+    dirLivros: "data/books",
+    ia: criarLocalizadorIA(),
+    logger,
+  })
+);
 
 // Register endpoint
 app.post("/users/create", async (c) => {
